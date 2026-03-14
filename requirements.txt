@@ -2,8 +2,6 @@ pandas
 numpy
 scikit-learn
 torch
-torchvision
-torchaudio
 transformers
 datasets
 beautifulsoup4
@@ -15,4 +13,3 @@ scipy
 streamlit
 feedparser
 langdetect
-fasttext-wheel
