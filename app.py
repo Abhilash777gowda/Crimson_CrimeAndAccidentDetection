@@ -72,19 +72,41 @@ def load_data():
 def fetch_live_news(max_per_feed: int = 20):
     """Run the full real-time pipeline: scrape → clean → classify → save."""
     from scraper.rss_scraper import RSSNewsScraper
+    from scraper.kannada_scraper import KannadaWebScraper
     from preprocessing.text_cleaner import TextCleaner
     from utils.classifier_inference import classify_articles
 
-    scraper = RSSNewsScraper()
-    df_raw = scraper.scrape_to_csv("data/raw_news.csv", max_per_feed=max_per_feed)
+    rss_scraper = RSSNewsScraper()
+    df_rss = rss_scraper.scrape_all(max_per_feed=max_per_feed)
+    
+    kannada_scraper = KannadaWebScraper()
+    df_kannada = kannada_scraper.scrape_all(max_per_source=max_per_feed)
+    
+    df_raw = pd.concat([df_rss, df_kannada], ignore_index=True)
     if df_raw.empty:
         return None, "❌ No articles fetched. Check your internet connection."
+        
+    df_raw.to_csv("data/raw_news.csv", index=False)
 
     cleaner = TextCleaner()
     df_raw['clean_text'] = df_raw['text'].apply(cleaner.clean_text)
     df_raw = df_raw[df_raw['clean_text'].str.len() > 0].reset_index(drop=True)
 
     df_classified = classify_articles(df_raw.copy())
+
+    # ─── Geocoding ───────────────────────────────────────────────────────────
+    from utils.geocoder import extract_location, geocode_location
+    
+    def get_coords(text):
+        loc = extract_location(text)
+        if loc:
+            lat, lon = geocode_location(loc)
+            return loc, lat, lon
+        return None, None, None
+
+    df_classified[['location', 'lat', 'lon']] = df_classified['text'].apply(
+        lambda x: pd.Series(get_coords(x))
+    )
 
     # Merge with existing data (keep newest, deduplicate by URL)
     if os.path.exists("data/labeled_news.csv"):
@@ -238,22 +260,23 @@ elif page == "📈 Trend Analysis":
         st.line_chart(monthly)
 
 elif page == "🗺️ Geospatial (Demo)":
-    st.title("🗺️ Geographic Crime Heatmap (Mocked Locations)")
-    st.markdown("Extracted article locations mapped to approximate city coordinates across India.")
+    st.title("🗺️ Geographic Crime Heatmap")
+    st.markdown("Real-time article locations extracted from news reports across India.")
 
     if df is not None:
-        import numpy as np
-        cities = [
-            (28.6139, 77.2090), (19.0760, 72.8777),
-            (12.9716, 77.5946), (13.0827, 80.2707), (22.5726, 88.3639),
-            (17.3850, 78.4867), (23.0225, 72.5714), (26.9124, 75.7873),
-        ]
-        rng = np.random.default_rng(seed=42)
-        coords = []
-        for _ in range(len(df)):
-            lat, lon = cities[rng.integers(0, len(cities))]
-            coords.append({'lat': lat + rng.normal(0, 0.5), 'lon': lon + rng.normal(0, 0.5)})
-        st.map(pd.DataFrame(coords))
+        # Filter for rows with valid lat/lon
+        map_df = df.dropna(subset=['lat', 'lon'])
+        
+        if map_df.empty:
+            st.info("No geocoded articles found yet. Click **🔄 Fetch Live News** in the sidebar to populate the map with real-time data.")
+            # Fallback to display center of India
+            st.map(pd.DataFrame({'lat': [20.5937], 'lon': [78.9629]}))
+        else:
+            st.markdown(f"**Mapping {len(map_df)} articles with detected locations.**")
+            st.map(map_df[['lat', 'lon']])
+            
+            with st.expander("View Location Data"):
+                st.dataframe(map_df[['title', 'source', 'location', 'lat', 'lon']], use_container_width=True)
     else:
         st.warning("Data not found.")
 

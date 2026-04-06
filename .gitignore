@@ -8,3 +8,9 @@ data/.last_updated
 plots/*.png
 models/saved_muril/
 models/saved_xlmroberta/
+models/
+data/
+*.safetensors
+*.bin
+__pycache__/
+*.pyc

@@ -5,13 +5,16 @@ from utils.helpers import setup_logging
 
 logger = setup_logging()
 
-# Free RSS feeds from major Indian news sources - no API key needed
+# Free RSS feeds from major Indian news sources (Multilingual)
 RSS_FEEDS = {
     "NDTV India": "https://feeds.feedburner.com/ndtvnews-india-news",
     "Times of India": "https://timesofindia.indiatimes.com/rssfeedmostread.cms",
     "The Hindu": "https://www.thehindu.com/news/national/feeder/default.rss",
     "India Today": "https://www.indiatoday.in/rss/1206551",
     "Hindustan Times": "https://www.hindustantimes.com/feeds/rss/india-news/rssfeed.xml",
+    "OneIndia Hindi": "https://hindi.oneindia.com/rss/hindi-news-fb.xml",
+    "OneIndia Tamil": "https://tamil.oneindia.com/rss/tamil-news-fb.xml",
+    "OneIndia Telugu": "https://telugu.oneindia.com/rss/telugu-news-fb.xml"
 }
 
 

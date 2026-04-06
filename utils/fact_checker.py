@@ -13,54 +13,89 @@ logger = setup_logging()
 def extract_keywords(text: str) -> List[str]:
     """
     Extract key terms from an article for search.
-    Simple approach: extract capitalized words (proper nouns) and long words.
+    Length-based extraction supports Indian languages which lack capitalization.
     """
-    # Remove special characters
-    text = re.sub(r'[^\w\s]', '', text)
+    # Remove basic punctuation but preserve unicode letters
+    text = re.sub(r'[.,!?"\'()\[\]{}:;—-]', '', text)
     words = text.split()
     
-    # Heuristic: Proper nouns (Capitalized) and significant words (> 6 chars)
-    keywords = [w for w in words if (w[0].isupper() and len(w) > 2) or len(w) > 7]
+    # Robust length heuristic: >= 3 characters catches meaningful Indian root words
+    keywords = [w.strip() for w in words if len(w.strip()) > 2]
     
     # Return unique keywords, top 10
     return list(dict.fromkeys(keywords))[:10]
 
 def search_online(keywords: List[str]) -> List[Dict]:
     """
-    Simulate an 'online' search by using the RSS scraper to find 
-    articles matching the keywords.
+    Search by cross-referencing against live web results via DuckDuckGo,
+    with a robust fallback to local real-time scraped components.
     """
-    from scraper.rss_scraper import RSSNewsScraper
-    scraper = RSSNewsScraper()
-    # Fetch a larger batch for searching
-    df = scraper.scrape_all(max_per_feed=30)
-    
-    if df.empty:
+    if not keywords:
         return []
     
-    # Filter by keywords
     results = []
-    query = " ".join(keywords).lower()
     
-    # Simple keyword matching
-    for _, row in df.iterrows():
-        text = str(row['text']).lower()
-        title = str(row['title']).lower()
+    # 1. Attempt True Live Web Search
+    try:
+        from duckduckgo_search import DDGS
+        query = " ".join(keywords)
+        logger.info(f"Performing live online search for keywords: {query}")
         
-        # Calculate match score
-        matches = sum(1 for kw in keywords if kw.lower() in text or kw.lower() in title)
-        if matches > 0:
-            results.append({
-                "title": row['title'],
-                "text": row['text'],
-                "url": row['url'],
-                "source": row['source'],
-                "match_score": matches
-            })
+        with DDGS(timeout=10) as ddgs:
+            ddgs_generator = ddgs.text(query, region='in-en', safesearch='moderate', max_results=10)
+            if ddgs_generator:
+                for res in ddgs_generator:
+                    text = res.get('body', '').lower()
+                    title = res.get('title', '').lower()
+                    
+                    matches = sum(1 for kw in keywords if kw.lower() in text or kw.lower() in title)
+                    if matches > 0:
+                        results.append({
+                            "title": res.get('title'),
+                            "text": res.get('body'),
+                            "url": res.get('href'),
+                            "source": "Web Search (DuckDuckGo)",
+                            "match_score": matches
+                        })
+    except Exception as e:
+        logger.warning(f"Live web search failed or dropped connection: {e}")
+        
+    # 2. Fallback to Deep Scraper Cache if DDG is rate-limited
+    if not results:
+        logger.info("Falling back to Live Streamlit Application Dataset...")
+        try:
+            df = pd.read_csv("data/labeled_news.csv")
+        except Exception:
+            df = pd.DataFrame()
+
+        if df.empty or len(df) < 5:
+            from scraper.rss_scraper import RSSNewsScraper
+            from scraper.kannada_scraper import KannadaWebScraper
             
-    # Sort by number of keyword matches
+            df_rss = RSSNewsScraper().scrape_all(max_per_feed=5)
+            df_kan = KannadaWebScraper().scrape_all(max_per_source=3)
+            
+            frames = [d for d in [df_rss, df_kan] if not d.empty]
+            if frames:
+                df = pd.concat(frames, ignore_index=True)
+                
+        for _, row in df.iterrows():
+            text = str(row.get('text', '')).lower()
+            title = str(row.get('title', '')).lower()
+            
+            matches = sum(1 for kw in keywords if kw.lower() in text or kw.lower() in title)
+            if matches > 0:
+                results.append({
+                    "title": row.get('title'),
+                    "text": row.get('text'),
+                    "url": row.get('url'),
+                    "source": row.get('source'),
+                    "match_score": matches
+                })
+                
     results = sorted(results, key=lambda x: x['match_score'], reverse=True)
-    return results[:5]  # Top 5 related articles
+    return results[:5]
+
 
 def compare_articles(original_text: str, related_articles: List[Dict]) -> Dict:
     """

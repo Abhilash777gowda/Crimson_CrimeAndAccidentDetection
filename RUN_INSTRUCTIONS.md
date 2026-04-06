@@ -36,7 +36,8 @@ python main.py
 
 #### Option B: Run Streamlit Dashboard (Interactive Web Interface)
 ```powershell
-streamlit run app.py
+
+
 ```
 This will open a web browser automatically at `http://localhost:8501`
 
