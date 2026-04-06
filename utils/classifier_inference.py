@@ -4,95 +4,93 @@ import pandas as pd
 import streamlit as st
 from utils.helpers import setup_logging
 from transformers import pipeline
+import torch
 
 logger = setup_logging()
 
-CRIME_CATEGORIES = ['theft', 'assault', 'accident', 'drug_crime', 'cybercrime', 'non_crime']
-SVM_MODEL_PATH = "models/baseline_svm.pkl"
-_muril_classifier = None
+CRIME_CATEGORIES = [
+    'murder', 'rape', 'kidnapping', 'accident', 'sexual_harassment', 
+    'theft', 'burglary', 'robbery', 'fraud_cheating', 'crime_against_children', 'non_crime'
+]
+
+# Mapping keys to descriptive labels for better Zero-Shot inference
+DESCRIPTIVE_LABELS = {
+    'murder': 'murder and homicide',
+    'rape': 'rape and sexual assault',
+    'kidnapping': 'kidnapping and abduction',
+    'accident': 'road or vehicle accident',
+    'sexual_harassment': 'sexual harassment',
+    'theft': 'theft',
+    'burglary': 'burglary and housebreaking',
+    'robbery': 'robbery and dacoity',
+    'fraud_cheating': 'fraud, cheating, and forgery',
+    'crime_against_children': 'crime against children',
+    'non_crime': 'general news not related to crime'
+}
+
+_zs_classifier = None
 
 @st.cache_resource(show_spinner=False)
-def get_kannada_classifier():
-    """Load the pre-trained MuRIL classifier for Kannada text."""
-    global _muril_classifier
-    import warnings
-    # Suppress transformers warnings in production
-    warnings.filterwarnings("ignore")
-    
-    if _muril_classifier is None:
+def get_zeroshot_classifier():
+    """Load a robust multilingual zero-shot classifier."""
+    global _zs_classifier
+    if _zs_classifier is None:
         try:
-            logger.info("Loading fine-tuned MuRIL classifier from models/saved_muril...")
-            from models.muril_classifier import MuRILClassifier
-            # Instantiate using local saved model and weights
-            _muril_classifier = MuRILClassifier(CRIME_CATEGORIES, model_name="models/saved_muril")
+            logger.info("Loading Multilingual Zero-Shot Classifier (mDeBERTa)...")
+            # This model supports 100+ languages including English, Hindi, Kannada, etc.
+            _zs_classifier = pipeline(
+                "zero-shot-classification", 
+                model="MoritzLaurer/mDeBERTa-v3-base-mnli-xnli",
+                device=0 if torch.cuda.is_available() else -1
+            )
         except Exception as e:
-            logger.error(f"Failed to load MuRIL model: {e}")
-            
-    return _muril_classifier
-
-def load_svm_model():
-    """Load the saved TF-IDF + SVM pipeline from disk."""
-    if not os.path.exists(SVM_MODEL_PATH):
-        logger.warning(f"SVM model not found at {SVM_MODEL_PATH}. Run main.py --use-synthetic first.")
-        return None, None
-    try:
-        with open(SVM_MODEL_PATH, "rb") as f:
-            bundle = pickle.load(f)
-        logger.info("SVM model loaded for real-time inference.")
-        return bundle["vectorizer"], bundle["classifier"]
-    except Exception as e:
-        logger.error(f"Failed to load SVM model: {e}")
-        return None, None
+            logger.error(f"Failed to load Zero-Shot model: {e}")
+            # Fallback to a smaller/standard one if needed
+            _zs_classifier = pipeline("zero-shot-classification", model="typeform/distilbert-base-uncased-mnli")
+    return _zs_classifier
 
 
 def classify_articles(df: pd.DataFrame, text_col: str = "clean_text") -> pd.DataFrame:
     """
-    Classify articles using SVM for English and Zero-Shot Transformer for Kannada.
-    Adds multi-hot crime category columns to the DataFrame.
+    Classify articles using a Multilingual Zero-Shot pipeline.
+    This allows detecting any number of crime categories without retraining.
     """
-    vectorizer, classifier = load_svm_model()
-
-    # Initialise all category columns to 0 as default
-    for cat in CRIME_CATEGORIES:
-        df[cat] = 0
-
     if df.empty:
         return df
 
-    # Helper function to detect Kannada text naively (by unicode range check)
-    def is_kannada(text):
-        return any('\u0C80' <= char <= '\u0CFF' for char in str(text))
+    # Initialize all category columns to 0
+    for cat in CRIME_CATEGORIES:
+        df[cat] = 0
 
     try:
-        muril = get_kannada_classifier()
-        
+        classifier = get_zeroshot_classifier()
+        labels = list(DESCRIPTIVE_LABELS.values())
+        label_to_key = {v: k for k, v in DESCRIPTIVE_LABELS.items()}
+
         for idx, row in df.iterrows():
             text = str(row[text_col]).strip()
-            if not text:
+            if not text or len(text) < 10:
                 continue
-                
-            if is_kannada(text):
-                # Run Kannada text through the fine-tuned MuRIL transformer
-                try:
-                    if muril:
-                        # predict returns a list of assigned labels like [['accident']]
-                        muril_labels = muril.predict([text])[0]
-                        for label in muril_labels:
-                            if label in CRIME_CATEGORIES:
-                                df.at[idx, label] = 1
-                        logger.debug(f"MuRIL mapped snippet to -> {muril_labels}")
-                except Exception as e:
-                    logger.error(f"MuRIL classification error on snippet: {e}")
-            else:
-                # Run English text through fast SVM
-                if vectorizer and classifier:
-                    X = vectorizer.transform([text])
-                    preds = classifier.predict(X)[0]
-                    for i, cat in enumerate(CRIME_CATEGORIES):
-                        df.at[idx, cat] = preds[i]
 
-        logger.info(f"Classified {len(df)} articles using Hybrid AI Pipeline (SVM + MuRIL).")
+            # Run zero-shot inference
+            # multi_label=True allows mapping to multiple crime types if relevant
+            result = classifier(text, labels, multi_label=True)
+            
+            # Map high-confidence results back to our category keys
+            for label, score in zip(result['labels'], result['scores']):
+                if score > 0.4:  # Threshold for detection
+                    key = label_to_key.get(label)
+                    if key:
+                        df.at[idx, key] = 1
+            
+            # If no crime categories found, mark as non_crime
+            crime_found = any(df.at[idx, k] == 1 for k in CRIME_CATEGORIES if k != 'non_crime')
+            if not crime_found:
+                df.at[idx, 'non_crime'] = 1
+
+        logger.info(f"Classified {len(df)} articles using Multilingual Zero-Shot Pipeline.")
     except Exception as e:
-        logger.error(f"Classification pipeline failed: {e}")
+        logger.error(f"Zero-Shot Classification failed: {e}")
 
     return df
+

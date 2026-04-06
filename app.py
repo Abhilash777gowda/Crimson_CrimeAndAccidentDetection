@@ -52,12 +52,17 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 </style>
 """, unsafe_allow_html=True)
 
-CRIME_CATEGORIES = ['theft', 'assault', 'accident', 'drug_crime', 'cybercrime', 'non_crime']
+CRIME_CATEGORIES = [
+    'murder', 'rape', 'kidnapping', 'accident', 'sexual_harassment', 
+    'theft', 'burglary', 'robbery', 'fraud_cheating', 'crime_against_children', 'non_crime'
+]
 BADGE_CLASSES = {
-    'theft': 'crime', 'assault': 'crime',
+    'murder': 'crime', 'rape': 'crime', 'kidnapping': 'crime',
+    'sexual_harassment': 'crime', 'crime_against_children': 'crime',
+    'theft': 'crime', 'burglary': 'crime', 'robbery': 'crime',
     'accident': 'accident',
-    'cybercrime': 'cyber',
-    'drug_crime': 'crime', 'non_crime': '',
+    'fraud_cheating': 'cyber',
+    'non_crime': '',
 }
 
 
