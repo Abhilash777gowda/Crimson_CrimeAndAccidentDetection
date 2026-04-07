@@ -207,7 +207,7 @@ st.sidebar.subheader("📡 Live Data Controls")
 articles_per_feed = st.sidebar.slider("Articles per source", 5, 30, 15, step=5)
 lite_mode = st.sidebar.checkbox("🚀 Lite Mode (Skip AI)", value=False, help="Skips heavy AI classification. Use this if Fetching fails on Streamlit Cloud.")
 
-if st.sidebar.button("🔄 Fetch Live News", use_container_width=True):
+if st.sidebar.button("🔄 Fetch Live News", width="stretch"):
     with st.spinner("Scraping Indian news feeds..."):
         df_new, msg = fetch_live_news(max_per_feed=articles_per_feed, skip_classification=lite_mode)
     load_data.clear()  # invalidate cache
@@ -335,14 +335,14 @@ elif page == "🗂️ Dataset Explorer":
             st.bar_chart(counts)
 
         st.subheader("Raw Data")
-        st.dataframe(df.head(100), use_container_width=True)
+        st.dataframe(df.head(100), width="stretch")
     else:
         st.warning("Data not found. Click **🔄 Fetch Live News** in the sidebar or run `main.py --use-synthetic`.")
 
 elif page == "📈 Trend Analysis":
     st.title("📈 Crime Trends Over Time")
     if os.path.exists("plots/crime_trends.png"):
-        st.image("plots/crime_trends.png", caption="Monthly Detected Incident Trends", use_container_width=True)
+        st.image("plots/crime_trends.png", caption="Monthly Detected Incident Trends", width="stretch")
     else:
         st.warning("Trend plot not found. Run the main pipeline to generate it.")
 
@@ -371,7 +371,7 @@ elif page == "🗺️ Geospatial Map":
             st.map(map_df[['lat', 'lon']])
             
             with st.expander("View Location Data"):
-                st.dataframe(map_df[['title', 'source', 'location', 'lat', 'lon']], use_container_width=True)
+                st.dataframe(map_df[['title', 'source', 'location', 'lat', 'lon']], width="stretch")
     else:
         st.warning("Data not found.")
 
@@ -391,7 +391,7 @@ elif page == "🛡️ Verification Hub":
         article_text = st.text_area("Paste the article content here:", height=300, 
                                      placeholder="Enter the full text of the crime report you want to verify...")
         
-        verify_btn = st.button("🔍 Verify Authenticity", type="primary", use_container_width=True)
+        verify_btn = st.button("🔍 Verify Authenticity", type="primary", width="stretch")
     
     with col2:
         st.subheader("How it works")
