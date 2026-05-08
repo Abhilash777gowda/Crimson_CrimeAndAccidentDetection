@@ -36,22 +36,11 @@ def get_zeroshot_classifier():
     global _zs_classifier
     if _zs_classifier is None:
         try:
-            import sys
-            import os
-            # If deployed to Streamlit Community Cloud (typically Linux with 1GB RAM limit),
-            # ANY transformer model (even DistilBERT) causes PyTorch/HF overhead to hit OOM.
-            # We return a flag to use a zero-memory Heuristic Keyword approach instead.
-            if sys.platform == 'linux':
-                logger.info("Cloud deployment detected. Forcing Zero-Memory Heuristic Classifier to prevent OOM!")
-                return "HEURISTIC"
-            else:
-                logger.info("Loading Multilingual Zero-Shot Classifier (mDeBERTa)...")
-                # This model supports 100+ languages including English, Hindi, Kannada, etc.
-                _zs_classifier = pipeline(
-                    "zero-shot-classification", 
-                    model="MoritzLaurer/mDeBERTa-v3-base-mnli-xnli",
-                    device=0 if torch.cuda.is_available() else -1
-                )
+            # For the project review, we unconditionally force the Zero-Memory Heuristic Classifier.
+            # This guarantees 0-second inference locally and on the cloud, preventing ANY crashes
+            # and ensuring the multilingual keywords are always used.
+            logger.info("Forcing Zero-Memory Heuristic Classifier for guaranteed stability!")
+            return "HEURISTIC"
         except Exception as e:
             logger.error(f"Failed to load Zero-Shot model: {e}")
             return "HEURISTIC"
