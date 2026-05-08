@@ -67,7 +67,12 @@ def classify_articles(df: pd.DataFrame, text_col: str = "clean_text") -> pd.Data
         labels = list(DESCRIPTIVE_LABELS.values())
         label_to_key = {v: k for k, v in DESCRIPTIVE_LABELS.items()}
 
-        for idx, row in df.iterrows():
+        total = len(df)
+        progress_bar = st.progress(0, text=f"AI Classification in progress... (0/{total} articles)")
+
+        for i, (idx, row) in enumerate(df.iterrows()):
+            if i % 2 == 0 or i == total - 1:
+                progress_bar.progress(min((i + 1) / total, 1.0), text=f"AI Classification in progress... ({i + 1}/{total} articles)")
             try:
                 text = str(row[text_col]).strip()
                 if not text or len(text) < 10:
@@ -92,6 +97,7 @@ def classify_articles(df: pd.DataFrame, text_col: str = "clean_text") -> pd.Data
             if not crime_found:
                 df.at[idx, 'non_crime'] = 1
 
+        progress_bar.empty()
         logger.info(f"Classified {len(df)} articles using Multilingual Zero-Shot Pipeline.")
     except Exception as e:
         logger.error(f"Zero-Shot Classification failed: {e}")

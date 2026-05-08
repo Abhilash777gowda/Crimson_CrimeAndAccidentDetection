@@ -30,7 +30,7 @@ class KannadaWebScraper:
         
         try:
             logger.info(f"Scraping HTML for {source_name} from {url}")
-            response = requests.get(url, headers=self.headers, timeout=15)
+            response = requests.get(url, headers=self.headers, timeout=5)
             response.raise_for_status()
             
             soup = BeautifulSoup(response.content, 'html.parser')
@@ -80,7 +80,7 @@ class KannadaWebScraper:
         except Exception as e:
             logger.warning(f"Failed to scrape HTML for {source_name}: {e}")
             
-        logger.info(f"  → Extracted {len(records)} potential articles from {source_name}")
+        logger.info(f"  -> Extracted {len(records)} potential articles from {source_name}")
         return records
 
     def scrape_all(self, max_per_source: int = 20) -> pd.DataFrame:

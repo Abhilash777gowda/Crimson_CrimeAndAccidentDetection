@@ -91,17 +91,17 @@ def fetch_live_news(max_per_feed: int = 20, skip_classification: bool = False):
     from preprocessing.text_cleaner import TextCleaner
     from utils.classifier_inference import classify_articles, CRIME_CATEGORIES
 
-    rss_scraper = RSSNewsScraper()
-    df_rss = rss_scraper.scrape_all(max_per_feed=max_per_feed)
-    
-    kannada_scraper = KannadaWebScraper()
-    df_kannada = kannada_scraper.scrape_all(max_per_source=max_per_feed)
-    
-    hindi_scraper = HindiWebScraper()
-    df_hindi = hindi_scraper.scrape_all(max_per_source=max_per_feed)
-    
-    regional_scraper = RegionalWebScraper()
-    df_regional = regional_scraper.scrape_all(max_per_source=max_per_feed)
+    import concurrent.futures
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+        future_rss = executor.submit(RSSNewsScraper().scrape_all, max_per_feed)
+        future_kan = executor.submit(KannadaWebScraper().scrape_all, max_per_feed)
+        future_hin = executor.submit(HindiWebScraper().scrape_all, max_per_feed)
+        future_reg = executor.submit(RegionalWebScraper().scrape_all, max_per_feed)
+        
+        df_rss = future_rss.result()
+        df_kannada = future_kan.result()
+        df_hindi = future_hin.result()
+        df_regional = future_reg.result()
     
     df_raw = pd.concat([df_rss, df_kannada, df_hindi, df_regional], ignore_index=True)
     if df_raw.empty:
@@ -121,7 +121,24 @@ def fetch_live_news(max_per_feed: int = 20, skip_classification: bool = False):
         df_classified['non_crime'] = 1
         logger.info("Skipping AI classification (Lite Mode active).")
     else:
-        df_classified = classify_articles(df_raw.copy())
+        MAX_CLASSIFY = 60
+        if len(df_raw) > MAX_CLASSIFY:
+            st.warning(f"⚠️ Limiting AI classification to a random sample of {MAX_CLASSIFY} articles (out of {len(df_raw)}) to save time. The rest will appear as unclassified.")
+            
+            # Shuffle to ensure a mix of sources (regional news has higher crime rate)
+            df_raw_shuffled = df_raw.sample(frac=1, random_state=42).reset_index(drop=True)
+            
+            df_to_classify = df_raw_shuffled.head(MAX_CLASSIFY).copy()
+            df_rest = df_raw_shuffled.tail(len(df_raw_shuffled) - MAX_CLASSIFY).copy()
+            
+            df_classified_top = classify_articles(df_to_classify)
+            for cat in CRIME_CATEGORIES:
+                df_rest[cat] = 0
+            df_rest['non_crime'] = 1
+            
+            df_classified = pd.concat([df_classified_top, df_rest], ignore_index=True)
+        else:
+            df_classified = classify_articles(df_raw.copy())
 
     # ─── Critical Incident Alerts ───────────────────────────────────────────
     CRITICAL_KEYS = ['murder', 'rape', 'kidnapping']
@@ -204,11 +221,11 @@ st.sidebar.caption("Real-time Crime & Accident Monitor")
 st.sidebar.markdown("---")
 st.sidebar.subheader("📡 Live Data Controls")
 
-articles_per_feed = st.sidebar.slider("Articles per source", 5, 30, 15, step=5)
+articles_per_feed = st.sidebar.slider("Articles per source", 5, 30, 5, step=5)
 lite_mode = st.sidebar.checkbox("🚀 Lite Mode (Skip AI)", value=False, help="Skips heavy AI classification. Use this if Fetching fails on Streamlit Cloud.")
 
 if st.sidebar.button("🔄 Fetch Live News", width="stretch"):
-    with st.spinner("Scraping Indian news feeds..."):
+    with st.spinner("Fetching and processing Indian news feeds... (AI Classification takes time)"):
         df_new, msg = fetch_live_news(max_per_feed=articles_per_feed, skip_classification=lite_mode)
     load_data.clear()  # invalidate cache
     st.sidebar.success(msg) if "✅" in msg else st.sidebar.error(msg)

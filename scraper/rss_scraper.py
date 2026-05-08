@@ -69,8 +69,7 @@ class RSSNewsScraper:
             try:
                 logger.info(f"Fetching RSS feed: {source} ({url})")
                 
-                # Fetch content with headers first, then parse string
-                resp = requests.get(url, headers=headers, timeout=15)
+                resp = requests.get(url, headers=headers, timeout=5)
                 if resp.status_code != 200:
                     logger.warning(f"Status {resp.status_code} for {source}")
                     continue
@@ -84,7 +83,7 @@ class RSSNewsScraper:
                     seen_urls.add(record["url"])
                     records.append(record)
                     fetched += 1
-                logger.info(f"  → {fetched} articles from {source}")
+                logger.info(f"  -> {fetched} articles from {source}")
             except Exception as e:
                 logger.warning(f"Failed to fetch {source}: {e}")
 
