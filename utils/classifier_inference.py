@@ -76,25 +76,19 @@ def classify_articles(df: pd.DataFrame, text_col: str = "clean_text") -> pd.Data
         if classifier == "HEURISTIC":
             logger.info("Running Heuristic Keyword Classification...")
             KEYWORDS = {
-                'murder': ['murder', 'kill', 'shot', 'homicide', 'stab', 'slain', 'hatya', 'kolai', 'dead body'],
-                'rape': ['rape', 'sexual assault', 'gangrape', 'balatkar'],
-                'kidnapping': ['kidnap', 'abduct', 'hostage', 'apaharan'],
-                'sexual_harassment': ['harassment', 'molest', 'eve-teasing', 'outrage'],
-                'crime_against_children': ['pocso', 'child abuse', 'minor girl', 'minor boy'],
-                'theft': ['theft', 'stolen', 'thief', 'chori', 'stealing'],
-                'burglary': ['burglary', 'break-in', 'looted', 'housebreak'],
-                'robbery': ['robbery', 'robbed', 'dacoity', 'mugged', 'snatch'],
-                'fraud_cheating': ['fraud', 'cheat', 'scam', 'dupe', 'fake', 'phishing', 'cybercrime'],
-                'accident': ['accident', 'crash', 'collide', 'collision', 'mishap', 'durghatna', 'run over']
+                'murder': ['murder', 'kill', 'shot', 'homicide', 'stab', 'slain', 'hatya', 'kolai', 'dead body', 'ಹತ್ಯೆ', 'ಕೊಲೆ', 'ಮರ್ಡರ್', 'हत्या', 'कत्ल', 'மரண', 'హత్య'],
+                'rape': ['rape', 'sexual assault', 'gangrape', 'balatkar', 'ಅತ್ಯಾಚಾರ', 'ರೇಪ್', 'बलात्कार', 'दुष्कर्म', 'கற்பழிப்பு', 'అత్యాచారం'],
+                'kidnapping': ['kidnap', 'abduct', 'hostage', 'apaharan', 'ಅಪಹರಣ', 'किडनैप', 'अपहरण', 'கடத்தல்', 'కిడ్నాప్'],
+                'sexual_harassment': ['harassment', 'molest', 'eve-teasing', 'outrage', 'ಕಿರುಕುಳ', 'छेड़छाड़', 'துன்புறுத்தல்', 'వేధింపు'],
+                'crime_against_children': ['pocso', 'child abuse', 'minor girl', 'minor boy', 'ಮಕ್ಕಳ', 'बच्चे', 'குழந்தை', 'పిల్లల'],
+                'theft': ['theft', 'stolen', 'thief', 'chori', 'stealing', 'ಕಳ್ಳತನ', 'ಚೋರಿ', 'चोरी', 'திருட்டு', 'దొంగతనం'],
+                'burglary': ['burglary', 'break-in', 'looted', 'housebreak', 'ದರೋಡೆ', 'सेंधमारी', 'கொள்ளை', 'దోపిడీ'],
+                'robbery': ['robbery', 'robbed', 'dacoity', 'mugged', 'snatch', 'ಲೂಟಿ', 'लूट', 'डकैती', 'வழிப்பறி', 'దోపిడీ'],
+                'fraud_cheating': ['fraud', 'cheat', 'scam', 'dupe', 'fake', 'phishing', 'cybercrime', 'ವಂಚನೆ', 'மோசடி', 'धोखाधड़ी', 'ठगी', 'మోసం'],
+                'accident': ['accident', 'crash', 'collide', 'collision', 'mishap', 'durghatna', 'run over', 'ಅಪಘಾತ', 'ಡಿಕ್ಕಿ', 'ದುರಂತ', 'दुर्घटना', 'हादसा', 'விபத்து', 'ప్రమాదం']
             }
             
-            total = len(df)
-            progress_bar = st.progress(0, text=f"Fast Keyword Classification in progress... (0/{total})")
-            
-            for i, (idx, row) in enumerate(df.iterrows()):
-                if i % 5 == 0 or i == total - 1:
-                    progress_bar.progress(min((i + 1) / total, 1.0), text=f"Fast Keyword Classification in progress... ({i + 1}/{total})")
-                    
+            for idx, row in df.iterrows():
                 text = str(row.get('title', '')) + " " + str(row.get(text_col, ''))
                 text = text.lower()
                 crime_found = False
@@ -108,7 +102,6 @@ def classify_articles(df: pd.DataFrame, text_col: str = "clean_text") -> pd.Data
                 if not crime_found:
                     df.at[idx, 'non_crime'] = 1
                     
-            progress_bar.empty()
             logger.info("Heuristic classification completed successfully.")
             return df
 
