@@ -36,13 +36,26 @@ def get_zeroshot_classifier():
     global _zs_classifier
     if _zs_classifier is None:
         try:
-            logger.info("Loading Multilingual Zero-Shot Classifier (mDeBERTa)...")
-            # This model supports 100+ languages including English, Hindi, Kannada, etc.
-            _zs_classifier = pipeline(
-                "zero-shot-classification", 
-                model="MoritzLaurer/mDeBERTa-v3-base-mnli-xnli",
-                device=0 if torch.cuda.is_available() else -1
-            )
+            import sys
+            import os
+            # If deployed to Streamlit Community Cloud (typically Linux with 1GB RAM limit),
+            # the heavy 1.1GB mDeBERTa model will cause a silent Out-Of-Memory (OOM) crash or freeze.
+            # We fallback to a much smaller 260MB English model for cloud deployments.
+            if sys.platform == 'linux':
+                logger.info("Cloud deployment detected. Loading lightweight Zero-Shot Classifier to prevent OOM...")
+                _zs_classifier = pipeline(
+                    "zero-shot-classification", 
+                    model="typeform/distilbert-base-uncased-mnli",
+                    device=-1
+                )
+            else:
+                logger.info("Loading Multilingual Zero-Shot Classifier (mDeBERTa)...")
+                # This model supports 100+ languages including English, Hindi, Kannada, etc.
+                _zs_classifier = pipeline(
+                    "zero-shot-classification", 
+                    model="MoritzLaurer/mDeBERTa-v3-base-mnli-xnli",
+                    device=0 if torch.cuda.is_available() else -1
+                )
         except Exception as e:
             logger.error(f"Failed to load Zero-Shot model: {e}")
             # Fallback to a smaller/standard one if needed
