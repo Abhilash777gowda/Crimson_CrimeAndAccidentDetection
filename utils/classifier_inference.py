@@ -39,15 +39,11 @@ def get_zeroshot_classifier():
             import sys
             import os
             # If deployed to Streamlit Community Cloud (typically Linux with 1GB RAM limit),
-            # the heavy 1.1GB mDeBERTa model will cause a silent Out-Of-Memory (OOM) crash or freeze.
-            # We fallback to a much smaller 260MB English model for cloud deployments.
+            # ANY transformer model (even DistilBERT) causes PyTorch/HF overhead to hit OOM.
+            # We return a flag to use a zero-memory Heuristic Keyword approach instead.
             if sys.platform == 'linux':
-                logger.info("Cloud deployment detected. Loading lightweight Zero-Shot Classifier to prevent OOM...")
-                _zs_classifier = pipeline(
-                    "zero-shot-classification", 
-                    model="typeform/distilbert-base-uncased-mnli",
-                    device=-1
-                )
+                logger.info("Cloud deployment detected. Forcing Zero-Memory Heuristic Classifier to prevent OOM!")
+                return "HEURISTIC"
             else:
                 logger.info("Loading Multilingual Zero-Shot Classifier (mDeBERTa)...")
                 # This model supports 100+ languages including English, Hindi, Kannada, etc.
@@ -58,15 +54,14 @@ def get_zeroshot_classifier():
                 )
         except Exception as e:
             logger.error(f"Failed to load Zero-Shot model: {e}")
-            # Fallback to a smaller/standard one if needed
-            _zs_classifier = pipeline("zero-shot-classification", model="typeform/distilbert-base-uncased-mnli")
+            return "HEURISTIC"
     return _zs_classifier
 
 
 def classify_articles(df: pd.DataFrame, text_col: str = "clean_text") -> pd.DataFrame:
     """
-    Classify articles using a Multilingual Zero-Shot pipeline.
-    This allows detecting any number of crime categories without retraining.
+    Classify articles using a Multilingual Zero-Shot pipeline (locally)
+    or a lightning-fast keyword heuristic (on Streamlit Cloud) to prevent crashes.
     """
     if df.empty:
         return df
@@ -77,6 +72,47 @@ def classify_articles(df: pd.DataFrame, text_col: str = "clean_text") -> pd.Data
 
     try:
         classifier = get_zeroshot_classifier()
+        
+        if classifier == "HEURISTIC":
+            logger.info("Running Heuristic Keyword Classification...")
+            KEYWORDS = {
+                'murder': ['murder', 'kill', 'shot', 'homicide', 'stab', 'slain', 'hatya', 'kolai', 'dead body'],
+                'rape': ['rape', 'sexual assault', 'gangrape', 'balatkar'],
+                'kidnapping': ['kidnap', 'abduct', 'hostage', 'apaharan'],
+                'sexual_harassment': ['harassment', 'molest', 'eve-teasing', 'outrage'],
+                'crime_against_children': ['pocso', 'child abuse', 'minor girl', 'minor boy'],
+                'theft': ['theft', 'stolen', 'thief', 'chori', 'stealing'],
+                'burglary': ['burglary', 'break-in', 'looted', 'housebreak'],
+                'robbery': ['robbery', 'robbed', 'dacoity', 'mugged', 'snatch'],
+                'fraud_cheating': ['fraud', 'cheat', 'scam', 'dupe', 'fake', 'phishing', 'cybercrime'],
+                'accident': ['accident', 'crash', 'collide', 'collision', 'mishap', 'durghatna', 'run over']
+            }
+            
+            total = len(df)
+            progress_bar = st.progress(0, text=f"Fast Keyword Classification in progress... (0/{total})")
+            
+            for i, (idx, row) in enumerate(df.iterrows()):
+                if i % 5 == 0 or i == total - 1:
+                    progress_bar.progress(min((i + 1) / total, 1.0), text=f"Fast Keyword Classification in progress... ({i + 1}/{total})")
+                    
+                text = str(row.get('title', '')) + " " + str(row.get(text_col, ''))
+                text = text.lower()
+                crime_found = False
+                
+                if len(text) > 5:
+                    for cat, words in KEYWORDS.items():
+                        if any(w in text for w in words):
+                            df.at[idx, cat] = 1
+                            crime_found = True
+                            
+                if not crime_found:
+                    df.at[idx, 'non_crime'] = 1
+                    
+            progress_bar.empty()
+            logger.info("Heuristic classification completed successfully.")
+            return df
+
+        # Fallback to standard Zero-Shot (Local PC)
         labels = list(DESCRIPTIVE_LABELS.values())
         label_to_key = {v: k for k, v in DESCRIPTIVE_LABELS.items()}
 
@@ -92,12 +128,10 @@ def classify_articles(df: pd.DataFrame, text_col: str = "clean_text") -> pd.Data
                     continue
 
                 # Run zero-shot inference
-                # multi_label=True allows mapping to multiple crime types if relevant
                 result = classifier(text, labels, multi_label=True)
                 
-                # Map high-confidence results back to our category keys
                 for label, score in zip(result['labels'], result['scores']):
-                    if score > 0.4:  # Threshold for detection
+                    if score > 0.4:
                         key = label_to_key.get(label)
                         if key:
                             df.at[idx, key] = 1
@@ -105,7 +139,6 @@ def classify_articles(df: pd.DataFrame, text_col: str = "clean_text") -> pd.Data
                 logger.warning(f"Failed to classify article at index {idx}: {inner_e}")
                 continue
             
-            # If no crime categories found, mark as non_crime
             crime_found = any(df.at[idx, k] == 1 for k in CRIME_CATEGORIES if k != 'non_crime')
             if not crime_found:
                 df.at[idx, 'non_crime'] = 1
@@ -113,7 +146,7 @@ def classify_articles(df: pd.DataFrame, text_col: str = "clean_text") -> pd.Data
         progress_bar.empty()
         logger.info(f"Classified {len(df)} articles using Multilingual Zero-Shot Pipeline.")
     except Exception as e:
-        logger.error(f"Zero-Shot Classification failed: {e}")
+        logger.error(f"Classification failed: {e}")
 
     return df
 
